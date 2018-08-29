@@ -142,7 +142,11 @@ function vfs_list(spec) {
 				list.push(key);
 			}
 		}
-		list.sort();
+		list.sort(function(a, b) {
+			var lenDiff = a.length - b.length;
+			if (lenDiff != 0) return lenDiff;
+			else return a.localeCompare(b);
+		});
 		return list;
 	} else {
 		console.log("unknown findfirst spec: " + spec);
@@ -289,13 +293,13 @@ function vfs_done() {
 }
 
 var audioCtx = undefined;
-var audioDest = undefined;
+var audioGain = undefined;
 var pc_speaker = undefined;
 
 document.addEventListener('mousedown', function(event) {
 	if (audioCtx == undefined) {
 		audioCtx = new (window.AudioContext || window.webkitAudioContext) ();
-		audioDest = audioCtx.createGain();
+		audioGain = audioCtx.createGain();
 	}
 });
 
@@ -326,9 +330,9 @@ function speakerg_on(freq) {
 		pc_speaker = audioCtx.createOscillator();
 		pc_speaker.type = 'square';
 		pc_speaker.frequency.setValueAtTime(freq, audioCtx.currentTime + lastADelay);
-		pc_speaker.connect(audioDest);
-		audioDest.connect(audioCtx.destination);
-		audioDest.gain.setValueAtTime(0.2, audioCtx.currentTime);
+		pc_speaker.connect(audioGain);
+		audioGain.connect(audioCtx.destination);
+		audioGain.gain.setValueAtTime(0.2, audioCtx.currentTime);
 		pc_speaker.start(0);
 	} else {
 		pc_speaker.frequency.setValueAtTime(freq, audioCtx.currentTime + lastADelay);
