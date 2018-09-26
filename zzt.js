@@ -70,6 +70,7 @@ function vfs_append(fn, then) {
 		vfs_progress[fn] = 0;
 		for (let key in loader.files) {
 			vfs[key.toUpperCase()] = loader.files[key];
+			vfs[key.toUpperCase()].readonly = true;
 		}
 
 		then();
@@ -78,16 +79,28 @@ function vfs_append(fn, then) {
 
 var handles = {};
 
-function vfsg_open(fn) {
-	fn = emu.Pointer_stringify(fn).toUpperCase();
-	console.log("trying to open " + fn);
-	if (!(fn in vfs)) return -1;
-	console.log("opening " + fn);
-	console.log(vfs[fn].buffer);
+function vfsg_has_feature(id) {
+	if (id == 1 /* joy connected */) return true;
+	else if (id == 2 /* mouse connected */) return true;
+	else return false;
+}
 
+function vfsg_open(fn, mode) {
+	fn = emu.Pointer_stringify(fn).toUpperCase();
+	var is_write = (mode & 0x3) == 1;
+	if (is_write) {
+		if (fn in vfs && vfs[fn].readonly) return -1;
+		if (!(fn in vfs) || ((mode & 0x10000) != 0)) {
+			vfs[fn] = {readonly: false, buffer: new Uint8Array(0)};
+		}
+	} else {
+		if (!(fn in vfs)) return -1;
+	}
+
+	console.log("opening " + fn);
 	var i = 1;
 	while (i in handles) i++;
-	handles[i] = {name: fn, pos: 0, array: vfs[fn].buffer};
+	handles[i] = {name: fn, pos: 0, mode: mode, array: vfs[fn].buffer, obj: vfs[fn]};
 
 	return i;
 }
@@ -127,6 +140,26 @@ function vfsg_read(h, ptr, amount) {
 	console.log("read " + maxlen + " bytes");
 	h.pos += maxlen;
 	return maxlen;
+}
+
+function vfsg_write(h, ptr, amount) {
+	if (!(h in handles)) return -1;
+	h = handles[h];
+	var len = h.array.length;
+	var newlen = h.pos + amount;
+	if (newlen > len) {
+		var newA = new Uint8Array(newlen);
+		newA.set(h.array, 0);
+		h.obj.buffer = newA;
+		h.array = newA;
+		len = newlen;
+	}
+	for (var pos = 0; pos < amount; pos++) {
+		h.array[h.pos + pos] = emu.getValue(ptr+pos, "i8");
+	}
+	console.log("wrote " + amount + " bytes");
+	h.pos += amount;
+	return amount;
 }
 
 var ff_list = [];
@@ -192,6 +225,8 @@ function vfsg_findnext(ptr) {
 var queuedFrame = false;
 
 function zzt_frame() {
+	poll_gamepads();
+
 	video_mode = emu._zzt_video_mode();
 	var ptr = emu._zzt_get_ram();
 	var width = 40;
@@ -419,6 +454,56 @@ function vfs_on_loaded() {
 	}
 }
 
+/* gamepad logic */
+function poll_gamepads() {
+	var gamepads = navigator.getGamepads();
+	for (var i = 0; i < gamepads.length; i++) {
+		var gamepad = gamepads[i];
+		if (gamepad == null) continue;
+		if (gamepad.axes.length >= 2 && gamepad.buttons.length >= 1) {
+			var ax0 = gamepad.axes[0];
+			var ax1 = gamepad.axes[1];
+			ax0 = Math.round(ax0 * 127);
+			ax1 = Math.round(ax1 * 127);
+			emu._zzt_joy_axis(0, ax0);
+			emu._zzt_joy_axis(1, ax1);
+			emu._zzt_joy_clear(0);
+			for (var j = 0; j < gamepad.buttons.length; j++) {
+				if (gamepad.buttons[j].pressed) {
+					emu._zzt_joy_set(0);
+					break;
+				}
+			}
+		}
+	}
+}
+
+var mouseSensitivity = 4;
+
+function attach_mouse_handler(o) {
+	o.addEventListener("mousemove", function(e) {
+		var mx = e.movementX * mouseSensitivity;
+		var my = e.movementY * mouseSensitivity;
+		emu._zzt_mouse_axis(0, mx);
+		emu._zzt_mouse_axis(1, my);
+/*		var mouseX = e.clientX - o.offsetLeft;
+		var mouseY = e.clientY - o.offsetTop;
+		if (mouseX < 0) mouseX = 0;
+		else if (mouseX >= 640) mouseX = 639;
+		if (mouseY < 0) mouseY = 0;
+		else if (mouseY >= 350) mouseY = 349; */
+	});
+
+	o.addEventListener("mousedown", function(e) {
+		o.requestPointerLock();
+		emu._zzt_mouse_set(e.button);
+	});
+
+	o.addEventListener("mouseup", function(e) {
+		emu._zzt_mouse_clear(e.button);
+	});
+}
+
 function zzt_emu_create(options) {
 	asciiImg.src = options.charset_png || (options.path + "ascii.png");
 	asciiImg.onload = function() {
@@ -435,6 +520,8 @@ function zzt_emu_create(options) {
 			charCtx.fillRect(0, 0, 128, 224);
 			asciiFg[i] = charCanvas;
 		}
+
+		attach_mouse_handler(canvas);
 
 		vfs_files = options.files;
 		vfs_arg = options.arg;
