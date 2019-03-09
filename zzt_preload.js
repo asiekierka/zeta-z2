@@ -8,8 +8,7 @@ function drawProgess(p) {
 
 var scripts_array = [];
 var zzt_opts = {};
-var script_ldr
-script_ldr = function() {
+var script_ldr = function() {
 	if (scripts_array.length == 0) {
 		zzt_emu_create(zzt_opts);
 		return;
