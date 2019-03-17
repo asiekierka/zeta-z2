@@ -1,11 +1,6 @@
 var canvas = null;
 var ctx = null;
 
-function drawProgess(p) {
-	ctx.fillStyle = "#ff0000";
-	ctx.fillRect(14*2, 112*2, p * 292*2, 20);
-}
-
 var scripts_array = [];
 var zzt_opts = {};
 var script_ldr = function() {
@@ -33,14 +28,13 @@ function zzt_emu_load(path, options) {
 	var imgload = new Image();
 	imgload.onload = function() {
 		ctx.imageSmoothingEnabled = false;
-		ctx.drawImage(imgload,0,0,320,175,0,0,640,350);
+		ctx.drawImage(imgload,0,0,320,175,(canvas.width - 640)/2,(canvas.height - 350)/2,640,350);
 	};
 	imgload.src = path+"loading.png";
 	scripts_array = [
-		path+"zip-loader.min.js",
+		path+"uzip.min.js",
 		path+"zeta86.js",
-		path+"zzt_kbdmap.js",
-		path+"zzt.js"
+		path+"zzt.min.js"
 	];
 	script_ldr();
 }
